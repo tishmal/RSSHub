@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  # PostgreSQL база данных
+  postgres:
+    image: postgres:15
+    container_name: rsshub_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DBNAME}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Наше CLI приложение
+  rsshub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rsshub_app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres  # Используем имя сервиса docker-compose
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DBNAME: ${POSTGRES_DBNAME}
+      CLI_APP_TIMER_INTERVAL: ${CLI_APP_TIMER_INTERVAL}
+      CLI_APP_WORKERS_COUNT: ${CLI_APP_WORKERS_COUNT}
+    # Запускаем в интерактивном режиме чтобы можно было использовать CLI
+    tty: true
+    stdin_open: true
+    volumes:
+      - .:/app
+    working_dir: /app
+
+volumes:
+  postgres_data:
