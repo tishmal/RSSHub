@@ -13,6 +13,7 @@ import (
 	"rsshub/internal/aggregator"
 	"rsshub/internal/config"
 	"rsshub/internal/database"
+	"rsshub/internal/lock"
 	"rsshub/internal/rss"
 	"rsshub/pkg/logger"
 )
@@ -47,6 +48,10 @@ func (c *CLI) Run(args []string) error {
 
 	switch command {
 	case "fetch":
+		if err := lock.Acquire(); err != nil {
+			return err
+		}
+		defer lock.Release()
 		return c.handleFetch()
 	case "add":
 		return c.handleAdd(args)
