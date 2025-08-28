@@ -138,6 +138,9 @@ func (a *Aggregator) SetInterval(newInterval time.Duration) error {
 	a.mu.Lock()
 	oldInterval := a.interval
 	a.interval = newInterval
+
+	fmt.Println(a.interval) // check
+
 	a.mu.Unlock()
 
 	a.runningMu.RLock()
@@ -214,8 +217,9 @@ func (a *Aggregator) aggregationLoop() {
 
 // fetchFeeds получает устаревшие ленты и распределяет их между воркерами
 func (a *Aggregator) fetchFeeds() {
+	logger.Info("-----------------------------")
 	logger.Info("Starting feeds fetch cycle...")
-
+	logger.Info("-----------------------------")
 	// Получаем самые устаревшие ленты
 	a.mu.RLock()
 	workersCount := a.workersCount
