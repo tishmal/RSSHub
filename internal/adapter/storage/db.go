@@ -1,12 +1,12 @@
-package database
+package storage
 
 import (
 	"database/sql"
 	"fmt"
 	"time"
 
-	"rsshub/internal/models"
-	"rsshub/pkg/logger"
+	"rsshub/internal/core/domain"
+	"rsshub/internal/platform/logger"
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq" // PostgreSQL драйвер
@@ -41,8 +41,8 @@ func New(dsn string) (*DB, error) {
 }
 
 // CreateFeed создает новую RSS ленту в базе данных
-func (db *DB) CreateFeed(name, url string) (*models.Feed, error) {
-	feed := &models.Feed{
+func (db *DB) CreateFeed(name, url string) (*domain.Feed, error) {
+	feed := &domain.Feed{
 		ID:        uuid.New(),
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -65,8 +65,8 @@ func (db *DB) CreateFeed(name, url string) (*models.Feed, error) {
 }
 
 // GetFeedByName получает ленту по имени
-func (db *DB) GetFeedByName(name string) (*models.Feed, error) {
-	feed := &models.Feed{}
+func (db *DB) GetFeedByName(name string) (*domain.Feed, error) {
+	feed := &domain.Feed{}
 
 	query := `
 		SELECT id, created_at, updated_at, name, url 
@@ -87,7 +87,7 @@ func (db *DB) GetFeedByName(name string) (*models.Feed, error) {
 }
 
 // GetAllFeeds получает все ленты, опционально ограничивая количество
-func (db *DB) GetAllFeeds(limit int) ([]*models.Feed, error) {
+func (db *DB) GetAllFeeds(limit int) ([]*domain.Feed, error) {
 	var query string
 	var args []interface{}
 
@@ -113,9 +113,9 @@ func (db *DB) GetAllFeeds(limit int) ([]*models.Feed, error) {
 	}
 	defer rows.Close()
 
-	var feeds []*models.Feed
+	var feeds []*domain.Feed
 	for rows.Next() {
-		feed := &models.Feed{}
+		feed := &domain.Feed{}
 		err := rows.Scan(&feed.ID, &feed.CreatedAt, &feed.UpdatedAt, &feed.Name, &feed.URL)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan feed: %w", err)
@@ -127,7 +127,7 @@ func (db *DB) GetAllFeeds(limit int) ([]*models.Feed, error) {
 }
 
 // GetOldestFeeds получает N самых устаревших лент для обновления
-func (db *DB) GetOldestFeeds(limit int) ([]*models.Feed, error) {
+func (db *DB) GetOldestFeeds(limit int) ([]*domain.Feed, error) {
 	query := `
 		SELECT id, created_at, updated_at, name, url 
 		FROM feeds 
@@ -140,9 +140,9 @@ func (db *DB) GetOldestFeeds(limit int) ([]*models.Feed, error) {
 	}
 	defer rows.Close()
 
-	var feeds []*models.Feed
+	var feeds []*domain.Feed
 	for rows.Next() {
-		feed := &models.Feed{}
+		feed := &domain.Feed{}
 		err := rows.Scan(&feed.ID, &feed.CreatedAt, &feed.UpdatedAt, &feed.Name, &feed.URL)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan feed: %w", err)
@@ -191,7 +191,7 @@ func (db *DB) DeleteFeed(name string) error {
 }
 
 // CreateArticle создает новую статью в базе данных
-func (db *DB) CreateArticle(article *models.Article) error {
+func (db *DB) CreateArticle(article *domain.Article) error {
 	// Генерируем ID если его нет
 	if article.ID == uuid.Nil {
 		article.ID = uuid.New()
@@ -223,7 +223,7 @@ func (db *DB) CreateArticle(article *models.Article) error {
 }
 
 // GetArticlesByFeedName получает статьи для конкретной ленты по имени
-func (db *DB) GetArticlesByFeedName(feedName string, limit int) ([]*models.Article, error) {
+func (db *DB) GetArticlesByFeedName(feedName string, limit int) ([]*domain.Article, error) {
 	if limit <= 0 {
 		limit = 3 // Значение по умолчанию
 	}
@@ -242,9 +242,9 @@ func (db *DB) GetArticlesByFeedName(feedName string, limit int) ([]*models.Artic
 	}
 	defer rows.Close()
 
-	var articles []*models.Article
+	var articles []*domain.Article
 	for rows.Next() {
-		article := &models.Article{}
+		article := &domain.Article{}
 		err := rows.Scan(
 			&article.ID, &article.CreatedAt, &article.UpdatedAt,
 			&article.Title, &article.Link, &article.PublishedAt,

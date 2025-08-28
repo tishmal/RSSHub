@@ -1,4 +1,4 @@
-package rss
+package httpfetcher
 
 import (
 	"encoding/xml"
@@ -7,8 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"rsshub/internal/models"
-	"rsshub/pkg/logger"
+	"rsshub/internal/core/domain"
+	"rsshub/internal/core/port"
+	"rsshub/internal/platform/logger"
 )
 
 // Parser отвечает за получение и парсинг RSS лент
@@ -17,7 +18,7 @@ type Parser struct {
 }
 
 // NewParser создает новый RSS парсер
-func NewParser() *Parser {
+func NewParser() port.Parser {
 	return &Parser{
 		client: &http.Client{
 			Timeout: 30 * time.Second, // Таймаут для HTTP запросов
@@ -26,7 +27,7 @@ func NewParser() *Parser {
 }
 
 // FetchAndParse получает RSS ленту по URL и парсит её
-func (p *Parser) FetchAndParse(url string) (*models.ParsedRSSFeed, error) {
+func (p *Parser) FetchAndParse(url string) (*domain.ParsedRSSFeed, error) {
 	logger.Info("Fetching RSS feed: %s", url)
 
 	// Делаем HTTP запрос к RSS ленте
@@ -42,7 +43,7 @@ func (p *Parser) FetchAndParse(url string) (*models.ParsedRSSFeed, error) {
 	}
 
 	// Парсим XML в структуру RSS
-	var rssFeed models.RSSFeed
+	var rssFeed domain.RSSFeed
 	decoder := xml.NewDecoder(resp.Body)
 	if err := decoder.Decode(&rssFeed); err != nil {
 		return nil, fmt.Errorf("failed to parse RSS XML from %s: %w", url, err)
@@ -59,12 +60,12 @@ func (p *Parser) FetchAndParse(url string) (*models.ParsedRSSFeed, error) {
 }
 
 // convertToParsedFeed конвертирует сырую RSS структуру в обработанную
-func (p *Parser) convertToParsedFeed(rssFeed *models.RSSFeed) (*models.ParsedRSSFeed, error) {
-	parsed := &models.ParsedRSSFeed{
+func (p *Parser) convertToParsedFeed(rssFeed *domain.RSSFeed) (*domain.ParsedRSSFeed, error) {
+	parsed := &domain.ParsedRSSFeed{
 		Title:       rssFeed.Channel.Title,
 		Link:        rssFeed.Channel.Link,
 		Description: rssFeed.Channel.Description,
-		Items:       make([]models.ParsedRSSItem, 0, len(rssFeed.Channel.Items)),
+		Items:       make([]domain.ParsedRSSItem, 0, len(rssFeed.Channel.Items)),
 	}
 
 	// Обрабатываем каждый элемент RSS ленты
@@ -82,8 +83,8 @@ func (p *Parser) convertToParsedFeed(rssFeed *models.RSSFeed) (*models.ParsedRSS
 }
 
 // convertRSSItem конвертирует отдельный элемент RSS в нашу структуру
-func (p *Parser) convertRSSItem(item *models.RSSItem) (*models.ParsedRSSItem, error) {
-	parsed := &models.ParsedRSSItem{
+func (p *Parser) convertRSSItem(item *domain.RSSItem) (*domain.ParsedRSSItem, error) {
+	parsed := &domain.ParsedRSSItem{
 		Title:       strings.TrimSpace(item.Title),
 		Link:        strings.TrimSpace(item.Link),
 		Description: strings.TrimSpace(item.Description),

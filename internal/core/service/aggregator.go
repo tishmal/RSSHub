@@ -1,4 +1,4 @@
-package aggregator
+package service
 
 import (
 	"context"
@@ -6,18 +6,17 @@ import (
 	"sync"
 	"time"
 
-	"rsshub/internal/database"
-	"rsshub/internal/models"
-	"rsshub/internal/rss"
-	"rsshub/pkg/logger"
+	"rsshub/internal/core/domain"
+	"rsshub/internal/core/port"
+	"rsshub/internal/platform/logger"
 
 	"github.com/google/uuid"
 )
 
 // Aggregator управляет фоновым процессом получения RSS лент
 type Aggregator struct {
-	db     *database.DB // База данных
-	parser *rss.Parser  // RSS парсер
+	db     port.FeedArticleRepository // База данных
+	parser port.Parser                // RSS парсер
 
 	// Настройки воркеров и интервала
 	mu           sync.RWMutex  // Мьютекс для безопасного доступа к настройкам
@@ -30,7 +29,7 @@ type Aggregator struct {
 	ticker *time.Ticker       // Таймер для периодических запусков
 
 	// Каналы для координации воркеров
-	jobs     chan *models.Feed // Канал заданий для воркеров
+	jobs     chan *domain.Feed // Канал заданий для воркеров
 	workerWg sync.WaitGroup    // WaitGroup для ожидания завершения воркеров
 
 	// Состояние
@@ -39,10 +38,10 @@ type Aggregator struct {
 }
 
 // New создает новый агрегатор
-func New(db *database.DB, defaultInterval time.Duration, defaultWorkers int) *Aggregator {
+func New(db port.FeedArticleRepository, parser port.Parser, defaultInterval time.Duration, defaultWorkers int) *Aggregator {
 	return &Aggregator{
 		db:           db,
-		parser:       rss.NewParser(),
+		parser:       parser,
 		interval:     defaultInterval,
 		workersCount: defaultWorkers,
 		isRunning:    false,
@@ -63,7 +62,7 @@ func (a *Aggregator) Start(ctx context.Context) error {
 	a.ctx, a.cancel = context.WithCancel(ctx)
 
 	// Инициализируем каналы и воркеры
-	a.jobs = make(chan *models.Feed, a.workersCount*2) // Буферизированный канал
+	a.jobs = make(chan *domain.Feed, a.workersCount*2) // Буферизированный канал
 
 	// Запускаем воркеров
 	for i := 0; i < a.workersCount; i++ {
@@ -280,7 +279,7 @@ func (a *Aggregator) worker(id int) {
 }
 
 // processFeed обрабатывает одну RSS ленту
-func (a *Aggregator) processFeed(workerID int, feed *models.Feed) {
+func (a *Aggregator) processFeed(workerID int, feed *domain.Feed) {
 	logger.Info("Worker %d processing feed: %s (%s)", workerID, feed.Name, feed.URL)
 
 	// Получаем и парсим RSS ленту
@@ -306,7 +305,7 @@ func (a *Aggregator) processFeed(workerID int, feed *models.Feed) {
 		}
 
 		// Создаем новую статью
-		article := &models.Article{
+		article := &domain.Article{
 			ID:          uuid.New(),
 			Title:       item.Title,
 			Link:        item.Link,

@@ -10,25 +10,25 @@ import (
 	"syscall"
 	"time"
 
-	"rsshub/internal/aggregator"
-	"rsshub/internal/config"
-	"rsshub/internal/database"
-	"rsshub/internal/lock"
-	"rsshub/internal/rss"
-	"rsshub/pkg/logger"
+	rss "rsshub/internal/adapter/fetcher/http"
+	"rsshub/internal/core/port"
+	aggregator "rsshub/internal/core/service"
+	"rsshub/internal/platform/config"
+	"rsshub/internal/platform/lock"
+	"rsshub/internal/platform/logger"
 )
 
 // CLI представляет интерфейс командной строки
 type CLI struct {
-	db         *database.DB
-	aggregator *aggregator.Aggregator
+	db         port.FeedArticleRepository
+	aggregator port.Aggregator
 	config     *config.Config
 }
 
 // New создает новый CLI
-func New(db *database.DB, cfg *config.Config) *CLI {
+func New(db port.FeedArticleRepository, parser port.Parser, cfg *config.Config) *CLI {
 	// Создаем агрегатор с настройками по умолчанию
-	agg := aggregator.New(db, cfg.Aggregator.DefaultInterval, cfg.Aggregator.DefaultWorkers)
+	agg := aggregator.New(db, parser, cfg.Aggregator.DefaultInterval, cfg.Aggregator.DefaultWorkers)
 
 	return &CLI{
 		db:         db,

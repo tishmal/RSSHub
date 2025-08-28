@@ -3,31 +3,39 @@ package main
 import (
 	"os"
 
-	"rsshub/internal/cli"
-	"rsshub/internal/config"
-	"rsshub/internal/database"
-	"rsshub/pkg/logger"
+	"rsshub/internal/adapter/cli"
+	httpfetcher "rsshub/internal/adapter/fetcher/http"
+	"rsshub/internal/adapter/storage"
+	"rsshub/internal/platform/config"
+	"rsshub/internal/platform/logger"
 )
 
 func main() {
-	// Загружаем конфигурацию из переменных окружения
+	// 1. Load configuration
 	cfg := config.Load()
 
-	// Подключаемся к базе данных
-	db, err := database.New(cfg.Database.GetDSN())
+	// 2. Connect to DB
+	db, err := storage.New(cfg.Database.GetDSN())
 	if err != nil {
 		logger.Fatal("Failed to connect to database: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			logger.Warn("Error closing database: %v", err)
+		}
+	}()
 
-	// Запускаем миграции
+	// 3. Run migrations
 	if err := db.RunMigrations(); err != nil {
 		logger.Fatal("Failed to run migrations: %v", err)
 	}
 
-	// Создаем CLI и запускаем команду
-	cliApp := cli.New(db, cfg)
+	parser := httpfetcher.NewParser()
 
+	// 4. Build CLI (composition root: inject repository + config)
+	cliApp := cli.New(db, parser, cfg)
+
+	// 5. Run CLI
 	if err := cliApp.Run(os.Args); err != nil {
 		logger.Error("Command failed: %v", err)
 		os.Exit(1)

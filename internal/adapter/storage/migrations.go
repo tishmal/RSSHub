@@ -1,8 +1,8 @@
-package database
+package storage
 
 import (
 	"fmt"
-	"rsshub/pkg/logger"
+	"rsshub/internal/platform/logger"
 )
 
 // RunMigrations запускает все миграции базы данных
