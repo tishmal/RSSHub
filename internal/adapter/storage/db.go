@@ -120,8 +120,6 @@ func (db *DB) GetAllFeeds(limit int) ([]*domain.Feed, error) {
 			ORDER BY created_at DESC`
 	}
 
-	fmt.Println("||||||||||||||||||||||||||||||||||||||||||||||")
-
 	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get feeds: %w", err)
@@ -136,7 +134,6 @@ func (db *DB) GetAllFeeds(limit int) ([]*domain.Feed, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan feed: %w", err)
 		}
-		fmt.Println("||||||||||||||||||||||||||||||||||||||||||||||")
 		feed.ID, err = utils.ParseUUID(idFeed)
 		if err != nil {
 			return nil, fmt.Errorf("failed to UIID feed: %w", err)
@@ -273,12 +270,14 @@ func (db *DB) GetArticlesByFeedName(feedName string, limit int) ([]*domain.Artic
 
 	var articles []*domain.Article
 	var articleID string
+	var feedID string
+
 	for rows.Next() {
 		article := &domain.Article{}
 		err := rows.Scan(
 			&articleID, &article.CreatedAt, &article.UpdatedAt,
 			&article.Title, &article.Link, &article.PublishedAt,
-			&article.Description, &article.FeedID,
+			&article.Description, &feedID,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan article: %w", err)
@@ -286,8 +285,14 @@ func (db *DB) GetArticlesByFeedName(feedName string, limit int) ([]*domain.Artic
 
 		article.ID, err = utils.ParseUUID(articleID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parsing: %w", err)
+			return nil, fmt.Errorf("failed parsing article ID: %w", err)
 		}
+
+		article.FeedID, err = utils.ParseUUID(feedID)
+		if err != nil {
+			return nil, fmt.Errorf("failed parsing feed ID: %w", err)
+		}
+
 		articles = append(articles, article)
 	}
 
