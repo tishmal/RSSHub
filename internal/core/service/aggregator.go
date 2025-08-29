@@ -10,7 +10,7 @@ import (
 	"rsshub/internal/core/port"
 	"rsshub/internal/platform/logger"
 
-	"github.com/google/uuid"
+	"rsshub/internal/platform/utils"
 )
 
 // Aggregator управляет фоновым процессом получения RSS лент
@@ -303,10 +303,14 @@ func (a *Aggregator) processFeed(workerID int, feed *domain.Feed) {
 			// Статья уже существует, пропускаем
 			continue
 		}
-
+		uuid, err := utils.NewUUID()
+		if err != nil {
+			logger.Error("UUID error: %v", err)
+			continue
+		}
 		// Создаем новую статью
 		article := &domain.Article{
-			ID:          uuid.New(),
+			ID:          uuid,
 			Title:       item.Title,
 			Link:        item.Link,
 			PublishedAt: item.PublishedAt,

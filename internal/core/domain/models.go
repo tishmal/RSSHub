@@ -3,28 +3,28 @@ package domain
 import (
 	"time"
 
-	"github.com/google/uuid"
+	"rsshub/internal/platform/utils"
 )
 
 // Feed представляет RSS ленту в базе данных
 type Feed struct {
-	ID        uuid.UUID `json:"id"`         // Уникальный идентификатор
-	CreatedAt time.Time `json:"created_at"` // Время создания записи
-	UpdatedAt time.Time `json:"updated_at"` // Время последнего обновления
-	Name      string    `json:"name"`       // Человекочитаемое имя ленты
-	URL       string    `json:"url"`        // URL для получения RSS данных
+	ID        utils.UUID `json:"id"`         // Уникальный идентификатор
+	CreatedAt time.Time  `json:"created_at"` // Время создания записи
+	UpdatedAt time.Time  `json:"updated_at"` // Время последнего обновления
+	Name      string     `json:"name"`       // Человекочитаемое имя ленты
+	URL       string     `json:"url"`        // URL для получения RSS данных
 }
 
 // Article представляет статью в базе данных
 type Article struct {
-	ID          uuid.UUID `json:"id"`           // Уникальный идентификатор
-	CreatedAt   time.Time `json:"created_at"`   // Время создания записи
-	UpdatedAt   time.Time `json:"updated_at"`   // Время последнего обновления
-	Title       string    `json:"title"`        // Заголовок статьи
-	Link        string    `json:"link"`         // URL статьи
-	PublishedAt time.Time `json:"published_at"` // Дата публикации из RSS
-	Description string    `json:"description"`  // Описание статьи
-	FeedID      uuid.UUID `json:"feed_id"`      // ID ленты, к которой принадлежит статья
+	ID          utils.UUID `json:"id"`           // Уникальный идентификатор
+	CreatedAt   time.Time  `json:"created_at"`   // Время создания записи
+	UpdatedAt   time.Time  `json:"updated_at"`   // Время последнего обновления
+	Title       string     `json:"title"`        // Заголовок статьи
+	Link        string     `json:"link"`         // URL статьи
+	PublishedAt time.Time  `json:"published_at"` // Дата публикации из RSS
+	Description string     `json:"description"`  // Описание статьи
+	FeedID      utils.UUID `json:"feed_id"`      // ID ленты, к которой принадлежит статья
 }
 
 // RSSFeed представляет структуру RSS XML документа

@@ -3,9 +3,8 @@ package port
 import (
 	"context"
 	"rsshub/internal/core/domain"
+	"rsshub/internal/platform/utils"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // FeedRepository defines storage operations
@@ -14,7 +13,7 @@ type FeedArticleRepository interface {
 	GetFeedByName(name string) (*domain.Feed, error)
 	GetAllFeeds(limit int) ([]*domain.Feed, error)
 	GetOldestFeeds(limit int) ([]*domain.Feed, error)
-	UpdateFeedTimestamp(feedID uuid.UUID) error
+	UpdateFeedTimestamp(feedID utils.UUID) error
 	DeleteFeed(name string) error
 	CreateArticle(article *domain.Article) error
 	GetArticlesByFeedName(feedName string, limit int) ([]*domain.Article, error)
