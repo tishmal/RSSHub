@@ -1,3 +1,4 @@
+// internal/core/port/rss.go
 package port
 
 import (
@@ -18,6 +19,14 @@ type FeedArticleRepository interface {
 	CreateArticle(article *domain.Article) error
 	GetArticlesByFeedName(feedName string, limit int) ([]*domain.Article, error)
 	ArticleExists(link string) (bool, error)
+
+	// Aggregator settings
+	SetAggregatorSetting(key, value string) error
+	GetAggregatorSetting(key string) (string, error)
+
+	// Database locking
+	TryLock(lockName string) (bool, error)
+	ReleaseLock(lockName string) error
 }
 
 type Parser interface {
@@ -31,4 +40,5 @@ type Aggregator interface {
 	IsRunning() bool
 	SetInterval(newInterval time.Duration) error
 	Resize(newWorkersCount int) error
+	LoadSettingsFromDB() error
 }

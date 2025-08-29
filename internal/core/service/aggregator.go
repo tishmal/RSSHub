@@ -1,8 +1,10 @@
+// internal/core/service/aggregator.go
 package service
 
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -35,6 +37,9 @@ type Aggregator struct {
 	// Состояние
 	isRunning bool         // Флаг запущенного состояния
 	runningMu sync.RWMutex // Мьютекс для проверки состояния
+
+	// Менеджер настроек
+	manager *AggregatorManager
 }
 
 // New создает новый агрегатор
@@ -45,7 +50,32 @@ func New(db port.FeedArticleRepository, parser port.Parser, defaultInterval time
 		interval:     defaultInterval,
 		workersCount: defaultWorkers,
 		isRunning:    false,
+		manager:      NewAggregatorManager(db),
 	}
+}
+
+// LoadSettingsFromDB загружает настройки агрегатора из базы данных
+func (a *Aggregator) LoadSettingsFromDB() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	// Загружаем интервал
+	if intervalStr, err := a.db.GetAggregatorSetting("interval"); err == nil {
+		if interval, err := time.ParseDuration(intervalStr); err == nil {
+			a.interval = interval
+			logger.Info("Loaded interval from database: %v", interval)
+		}
+	}
+
+	// Загружаем количество воркеров
+	if workersStr, err := a.db.GetAggregatorSetting("workers"); err == nil {
+		if workers, err := strconv.Atoi(workersStr); err == nil && workers > 0 {
+			a.workersCount = workers
+			logger.Info("Loaded workers count from database: %d", workers)
+		}
+	}
+
+	return nil
 }
 
 // Start запускает фоновый процесс агрегации RSS лент
@@ -58,14 +88,23 @@ func (a *Aggregator) Start(ctx context.Context) error {
 		return fmt.Errorf("background process is already running")
 	}
 
+	// Загружаем настройки из базы данных
+	if err := a.LoadSettingsFromDB(); err != nil {
+		logger.Warn("Failed to load settings from database: %v", err)
+	}
+
 	// Создаем контекст для управления жизненным циклом
 	a.ctx, a.cancel = context.WithCancel(ctx)
 
 	// Инициализируем каналы и воркеры
-	a.jobs = make(chan *domain.Feed, a.workersCount*2) // Буферизированный канал
+	a.mu.RLock()
+	workersCount := a.workersCount
+	a.mu.RUnlock()
+
+	a.jobs = make(chan *domain.Feed, workersCount*2) // Буферизированный канал
 
 	// Запускаем воркеров
-	for i := 0; i < a.workersCount; i++ {
+	for i := 0; i < workersCount; i++ {
 		a.workerWg.Add(1)
 		go a.worker(i + 1)
 	}
@@ -79,10 +118,13 @@ func (a *Aggregator) Start(ctx context.Context) error {
 	a.isRunning = true
 
 	logger.Success("The background process for fetching feeds has started (interval = %v, workers = %d)",
-		interval, a.workersCount)
+		interval, workersCount)
 
 	// Запускаем основной цикл агрегации
 	go a.aggregationLoop()
+
+	// Запускаем мониторинг изменений настроек
+	go a.manager.StartMonitoring(a.ctx, a)
 
 	// Делаем первый запуск сразу, не дожидаясь тикера
 	go a.fetchFeeds()
@@ -132,58 +174,66 @@ func (a *Aggregator) IsRunning() bool {
 	return a.isRunning
 }
 
-// SetInterval динамически изменяет интервал получения лент
+// SetInterval динамически изменяет интервал получения лент (только для запущенного агрегатора)
 func (a *Aggregator) SetInterval(newInterval time.Duration) error {
-	a.mu.Lock()
-	oldInterval := a.interval
-	a.interval = newInterval
-
-	fmt.Println(a.interval) // check
-
-	a.mu.Unlock()
-
-	a.runningMu.RLock()
-	isRunning := a.isRunning
-	a.runningMu.RUnlock()
-
-	// Если агрегатор запущен, нужно перезапустить тикер
-	if isRunning {
-		if a.ticker != nil {
-			a.ticker.Stop()
-			a.ticker = time.NewTicker(newInterval)
-		}
-		logger.Success("Interval of fetching feeds changed from %v to %v", oldInterval, newInterval)
-	}
-
-	return nil
-}
-
-// Resize динамически изменяет количество воркеров
-func (a *Aggregator) Resize(newWorkersCount int) error {
-	if newWorkersCount <= 0 {
-		return fmt.Errorf("workers count must be positive")
-	}
-
-	a.mu.Lock()
-	oldCount := a.workersCount
-	a.mu.Unlock()
-
 	a.runningMu.RLock()
 	isRunning := a.isRunning
 	a.runningMu.RUnlock()
 
 	if !isRunning {
+		return fmt.Errorf("aggregator is not running")
+	}
+
+	a.mu.Lock()
+	oldInterval := a.interval
+
+	// Проверяем, действительно ли интервал изменился
+	if oldInterval == newInterval {
+		a.mu.Unlock()
+		return nil // Нет изменений
+	}
+
+	a.interval = newInterval
+	a.mu.Unlock()
+
+	// Перезапускаем тикер с новым интервалом
+	if a.ticker != nil {
+		a.ticker.Stop()
+		a.ticker = time.NewTicker(newInterval)
+	}
+
+	logger.Success("Interval of fetching feeds changed from %v to %v (applied dynamically)", oldInterval, newInterval)
+	return nil
+}
+
+// Resize динамически изменяет количество воркеров (только для запущенного агрегатора)
+func (a *Aggregator) Resize(newWorkersCount int) error {
+	if newWorkersCount <= 0 {
+		return fmt.Errorf("workers count must be positive")
+	}
+
+	a.runningMu.RLock()
+	isRunning := a.isRunning
+	a.runningMu.RUnlock()
+
+	a.mu.Lock()
+	oldCount := a.workersCount
+
+	// Проверяем, действительно ли количество воркеров изменилось
+	if oldCount == newWorkersCount {
+		a.mu.Unlock()
+		return nil // Нет изменений
+	}
+
+	if !isRunning {
 		// Если агрегатор не запущен, просто обновляем значение
-		a.mu.Lock()
 		a.workersCount = newWorkersCount
 		a.mu.Unlock()
+		logger.Success("Number of workers changed from %d to %d", oldCount, newWorkersCount)
 		return nil
 	}
 
 	// Если агрегатор запущен, нужно управлять воркерами
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
 	if newWorkersCount > a.workersCount {
 		// Добавляем новых воркеров
 		for i := a.workersCount; i < newWorkersCount; i++ {
@@ -195,7 +245,9 @@ func (a *Aggregator) Resize(newWorkersCount int) error {
 	// когда закончатся задания или при следующем shutdown
 
 	a.workersCount = newWorkersCount
-	logger.Success("Number of workers changed from %d to %d", oldCount, newWorkersCount)
+	a.mu.Unlock()
+
+	logger.Success("Number of workers changed from %d to %d (applied dynamically)", oldCount, newWorkersCount)
 
 	return nil
 }

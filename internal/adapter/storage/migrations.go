@@ -1,3 +1,4 @@
+// internal/adapter/storage/migrations.go
 package storage
 
 import (
@@ -22,6 +23,11 @@ func (db *DB) RunMigrations() error {
 	// Создаем таблицу articles
 	if err := db.createArticlesTable(); err != nil {
 		return fmt.Errorf("failed to create articles table: %w", err)
+	}
+
+	// Создаем таблицу aggregator
+	if err := db.createAggregatorTable(); err != nil {
+		return fmt.Errorf("failed to create aggregator table: %w", err)
 	}
 
 	logger.Success("Database migrations completed successfully")
@@ -84,16 +90,19 @@ func (db *DB) createArticlesTable() error {
 	return err
 }
 
-// table aggregator settings
+// createAggregatorTable создает таблицу для настроек агрегатора и блокировок
 func (db *DB) createAggregatorTable() error {
 	query := `
-		CREATE TABLE aggregator (
-    		id SERIAL PRIMARY KEY,
-    		key TEXT UNIQUE NOT NULL,
-    		value TEXT NOT NULL);
+		CREATE TABLE IF NOT EXISTS aggregator (
+			id SERIAL PRIMARY KEY,
+			key TEXT UNIQUE NOT NULL,
+			value TEXT NOT NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+		);
 
-		-- Индекс
-		CREATE INDEX idx_aggregator_id ON aggregator(id);
+		-- Индексы
+		CREATE INDEX IF NOT EXISTS idx_aggregator_key ON aggregator(key);
 	`
 
 	_, err := db.Exec(query)

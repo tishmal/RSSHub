@@ -1,3 +1,4 @@
+// internal/adapter/storage/db.go
 package storage
 
 import (
@@ -310,4 +311,70 @@ func (db *DB) ArticleExists(link string) (bool, error) {
 	}
 
 	return exists, nil
+}
+
+// Aggregator settings methods
+
+// SetAggregatorSetting сохраняет настройку агрегатора
+func (db *DB) SetAggregatorSetting(key, value string) error {
+	query := `
+		INSERT INTO aggregator (key, value) 
+		VALUES ($1, $2)
+		ON CONFLICT (key) 
+		DO UPDATE SET value = EXCLUDED.value`
+
+	_, err := db.Exec(query, key, value)
+	if err != nil {
+		return fmt.Errorf("failed to set aggregator setting: %w", err)
+	}
+
+	return nil
+}
+
+// GetAggregatorSetting получает настройку агрегатора
+func (db *DB) GetAggregatorSetting(key string) (string, error) {
+	var value string
+	query := `SELECT value FROM aggregator WHERE key = $1`
+
+	err := db.QueryRow(query, key).Scan(&value)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", fmt.Errorf("setting not found: %s", key)
+		}
+		return "", fmt.Errorf("failed to get aggregator setting: %w", err)
+	}
+
+	return value, nil
+}
+
+// TryLock пытается получить блокировку в базе данных
+func (db *DB) TryLock(lockName string) (bool, error) {
+	query := `
+		INSERT INTO aggregator (key, value) 
+		VALUES ($1, 'locked')
+		ON CONFLICT (key) DO NOTHING`
+
+	result, err := db.Exec(query, lockName)
+	if err != nil {
+		return false, fmt.Errorf("failed to acquire lock: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to check rows affected: %w", err)
+	}
+
+	return rowsAffected > 0, nil
+}
+
+// ReleaseLock освобождает блокировку в базе данных
+func (db *DB) ReleaseLock(lockName string) error {
+	query := `DELETE FROM aggregator WHERE key = $1`
+
+	_, err := db.Exec(query, lockName)
+	if err != nil {
+		return fmt.Errorf("failed to release lock: %w", err)
+	}
+
+	return nil
 }

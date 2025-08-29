@@ -1,3 +1,4 @@
+// internal/adapter/cli/commands.go
 package cli
 
 import (
@@ -14,15 +15,19 @@ import (
 	"rsshub/internal/core/port"
 	aggregator "rsshub/internal/core/service"
 	"rsshub/internal/platform/config"
-	"rsshub/internal/platform/lock"
 	"rsshub/internal/platform/logger"
+)
+
+const (
+	DB_LOCK_NAME = "rsshub_fetch_lock"
 )
 
 // CLI представляет интерфейс командной строки
 type CLI struct {
-	db         port.FeedArticleRepository
-	aggregator port.Aggregator
-	config     *config.Config
+	db              port.FeedArticleRepository
+	aggregator      port.Aggregator
+	config          *config.Config
+	settingsManager *aggregator.AggregatorManager
 }
 
 // New создает новый CLI
@@ -31,9 +36,10 @@ func New(db port.FeedArticleRepository, parser port.Parser, cfg *config.Config) 
 	agg := aggregator.New(db, parser, cfg.Aggregator.DefaultInterval, cfg.Aggregator.DefaultWorkers)
 
 	return &CLI{
-		db:         db,
-		aggregator: agg,
-		config:     cfg,
+		db:              db,
+		aggregator:      agg,
+		config:          cfg,
+		settingsManager: aggregator.NewAggregatorManager(db),
 	}
 }
 
@@ -48,10 +54,6 @@ func (c *CLI) Run(args []string) error {
 
 	switch command {
 	case "fetch":
-		if err := lock.Acquire(); err != nil {
-			return err
-		}
-		defer lock.Release()
 		return c.handleFetch()
 	case "add":
 		return c.handleAdd(args)
@@ -74,8 +76,26 @@ func (c *CLI) Run(args []string) error {
 	}
 }
 
-// handleFetch запускает фоновый процесс получения RSS лент
+// handleFetch запускает фоновый процесс получения RSS лент с блокировкой через БД
 func (c *CLI) handleFetch() error {
+	// Пытаемся получить блокировку в базе данных
+	locked, err := c.db.TryLock(DB_LOCK_NAME)
+	if err != nil {
+		return fmt.Errorf("failed to acquire database lock: %w", err)
+	}
+
+	if !locked {
+		logger.Info("Another instance is already running")
+		return fmt.Errorf("another instance is already running")
+	}
+
+	// Обеспечиваем освобождение блокировки при выходе
+	defer func() {
+		if err := c.db.ReleaseLock(DB_LOCK_NAME); err != nil {
+			logger.Error("Failed to release database lock: %v", err)
+		}
+	}()
+
 	// Проверяем, не запущен ли уже процесс
 	if c.aggregator.IsRunning() {
 		logger.Info("Background process is already running")
@@ -139,7 +159,7 @@ func (c *CLI) handleAdd(args []string) error {
 	return nil
 }
 
-// handleSetInterval изменяет интервал получения лент
+// handleSetInterval изменяет интервал получения лент и сохраняет в БД
 func (c *CLI) handleSetInterval(args []string) error {
 	if len(args) < 3 {
 		return fmt.Errorf("interval duration is required (e.g., '2m', '30s', '1h')")
@@ -155,16 +175,11 @@ func (c *CLI) handleSetInterval(args []string) error {
 		return fmt.Errorf("interval must be at least 1 second")
 	}
 
-	// Проверяем, запущен ли агрегатор
-	if !c.aggregator.IsRunning() {
-		return fmt.Errorf("background process is not running. Start it first with 'rsshub fetch'")
-	}
-
-	// Изменяем интервал
-	return c.aggregator.SetInterval(duration)
+	// Используем менеджер настроек для динамического изменения
+	return c.settingsManager.SetInterval(duration)
 }
 
-// handleSetWorkers изменяет количество воркеров
+// handleSetWorkers изменяет количество воркеров и сохраняет в БД
 func (c *CLI) handleSetWorkers(args []string) error {
 	if len(args) < 3 {
 		return fmt.Errorf("number of workers is required")
@@ -179,13 +194,8 @@ func (c *CLI) handleSetWorkers(args []string) error {
 		return fmt.Errorf("workers count must be positive")
 	}
 
-	// Проверяем, запущен ли агрегатор
-	if !c.aggregator.IsRunning() {
-		return fmt.Errorf("background process is not running. Start it first with 'rsshub fetch'")
-	}
-
-	// Изменяем количество воркеров
-	return c.aggregator.Resize(count)
+	// Используем менеджер настроек для динамического изменения
+	return c.settingsManager.SetWorkers(count)
 }
 
 // handleList показывает список RSS лент
@@ -325,8 +335,8 @@ func (c *CLI) showHelp() {
 
 Common Commands:
      add             add new RSS feed
-     set-interval    set RSS fetch interval
-     set-workers     set number of workers
+     set-interval    set RSS fetch interval (persisted in database)
+     set-workers     set number of workers (persisted in database)
      list            list available RSS feeds
      delete          delete RSS feed
      articles        show latest articles
