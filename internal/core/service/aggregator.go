@@ -252,16 +252,24 @@ func (a *Aggregator) Resize(newWorkersCount int) error {
 	return nil
 }
 
-// aggregationLoop основной цикл агрегации
+// aggregationLoop запускает основной цикл агрегации
 func (a *Aggregator) aggregationLoop() {
+	settingsTicker := time.NewTicker(10 * time.Second)
+	defer settingsTicker.Stop()
+
 	for {
 		select {
 		case <-a.ctx.Done():
-			// Контекст отменен, завершаем цикл
 			return
+
 		case <-a.ticker.C:
-			// Время для очередного получения лент
 			go a.fetchFeeds()
+
+		case <-settingsTicker.C:
+			logger.Info("Checking DB for settings changes...")
+			if err := a.manager.CheckAndApplyChanges(a); err != nil {
+				logger.Error("Failed to apply settings changes: %v", err)
+			}
 		}
 	}
 }
