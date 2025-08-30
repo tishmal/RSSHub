@@ -2,7 +2,7 @@ FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
-COPY go.mod go.sum rsshub.lock ./
+COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
@@ -17,7 +17,6 @@ RUN apk add --no-cache fish
 
 WORKDIR /app
 COPY --from=builder /app/rsshub  .
-COPY  --from=builder /app/rsshub.lock . 
 
 SHELL ["/usr/bin/fish", "-c"]
 
